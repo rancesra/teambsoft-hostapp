@@ -1,7 +1,7 @@
 # Contrato del Host App — Cliente Web
 
-**Versión:** 1.0
-**Fecha:** 2026-09-21
+**Versión:** 1.1
+**Fecha:** 2026-10-04
 **Equipo responsable:** Equipo B (Catálogo)
 **Consumido por:** Equipo A (Búsqueda), Equipo C (Carrito)
 
@@ -49,18 +49,31 @@ En la práctica, esto significa que el módulo **no puede asumir que la sesión,
 
 Se hace en dos etapas. La etapa 1 tiene que estar funcionando antes de intentar la 2.
 
-### Etapa 1 — Composición por rutas (obligatoria)
+### Etapa 1 — Composición con iframes (obligatoria)
 
-Cada módulo se construye y se sirve por su cuenta; el Host App enlaza a él. Es lo que garantiza que haya algo que mostrar.
+El encabezado del Host App queda fijo, y **cada módulo se carga dentro de un iframe** debajo de él. Cada módulo se construye, se sirve y se despliega por su cuenta, en su propia dirección; el Host App solo sabe dónde está.
 
-Requisito para los módulos: que el proyecto funcione servido **bajo un sub-path**, no solo en la raíz. En Vite se logra con la opción `base`:
+Se eligió así porque es la única forma de tener un cascarón de verdad **sin que ningún equipo tenga que cambiar su configuración de build** ni alinear versiones. Y aísla los estilos sin esfuerzo: lo que un módulo declare en CSS no puede pisar a otro.
 
-```js
-// vite.config.js
-export default defineConfig({
-  base: process.env.BASE_URL ?? '/',
-})
-```
+**Lo que tiene que cumplir cada módulo**, y nada más:
+
+1. **Estar corriendo en una dirección.** El Host App la lee de su archivo `.env.development` (`VITE_MODULO_CATALOGO`, `VITE_MODULO_BUSQUEDA`, `VITE_MODULO_CARRO`). Ese archivo sí se sube al repositorio: son direcciones de desarrollo, no secretos. Si alguien necesita otras en su máquina, las pone en un `.env.development.local`, que git ignora.
+2. **Conservar su prefijo en sus propias rutas.** El Host App le pasa la ruta tal cual: `/carrito/checkout` en el cascarón abre `/carrito/checkout` dentro del módulo de Carro.
+3. **No pintar su propio encabezado cuando está dentro del Host App.** Si no, se ven dos. Un módulo sabe que está dentro de un iframe así:
+
+   ```js
+   const embebido = window.self !== window.top
+   ```
+
+   y oculta su barra con `v-if="!embebido"`. Cuando corre solo, la sigue mostrando: la regla de oro se mantiene.
+4. **Dejarse cargar en un iframe.** No enviar la cabecera `X-Frame-Options: DENY` ni una política `frame-ancestors 'none'`. Vite no envía ninguna de las dos por defecto.
+
+Si un módulo no tiene dirección configurada, el Host App muestra *"todavía no está conectado"*; si la tiene pero no responde, muestra *"no está disponible"* con un botón para reintentar. Nunca una pantalla en blanco.
+
+**Lo que esta etapa no da**, y por eso existe la etapa 2:
+
+- **La barra de búsqueda y el contador del carrito no van en el encabezado del cascarón.** Viven dentro de sus módulos. Ponerlos arriba, compartidos, es justamente lo que permite `./Encabezado` en la etapa 2.
+- **Si el usuario navega dentro del módulo**, la dirección del cascarón no cambia. Entrar directo a `/catalogo/admin` sí funciona; lo que no se actualiza es la barra de direcciones cuando se navega adentro.
 
 ### Etapa 2 — Module Federation
 
@@ -100,6 +113,8 @@ export default [
 **`shared` es obligatorio** para `vue` y `vue-router`: si cada módulo trae su propia copia de Vue, la aplicación falla en tiempo de ejecución con errores que no dicen nada útil.
 
 ## 5. Qué le entrega el Host App a los módulos
+
+> **Esto aplica a la etapa 2.** `provide` / `inject` solo funciona cuando todos los módulos viven dentro de la misma aplicación de Vue. En la etapa 1 cada módulo es una aplicación aparte dentro de su iframe, así que **el Host App no les entrega nada**: cada módulo maneja su propia sesión. Como Keycloak no está integrado, hoy eso no le quita nada a nadie.
 
 Se entrega con `provide` / `inject` de Vue. **El módulo debe funcionar si no está** (regla de oro): si `inject` devuelve `undefined`, es que el módulo corre solo.
 
@@ -146,7 +161,7 @@ Node.js en versión LTS.
 
 ## 8. Fuera de alcance en esta entrega
 
-- **Autenticación real.** Keycloak no está integrado, igual que en los tres contratos de servicio. El Host App entrega `sesion` con un token simulado.
+- **Autenticación real.** Keycloak no está integrado, igual que en los tres contratos de servicio. En la etapa 1 cada módulo maneja su propia sesión; el contrato de Carro ya prevé un token simulado para sus pruebas.
 - **Estado global compartido entre módulos** más allá de `sesion`.
 - **Despliegue del Host App** en un servidor: por ahora corre local.
 - **Comunicación directa entre módulos.** Si Catálogo necesita avisarle algo al Carrito, se hace por navegación o por el backend, no por eventos del navegador. Esto se puede revisar si aparece un caso real.
@@ -161,3 +176,4 @@ Node.js en versión LTS.
 | Fecha | Cambio |
 |---|---|
 | 2026-09-21 | v1.0 — versión inicial. El Host App queda a cargo del Equipo B por acuerdo de los 3 equipos |
+| 2026-10-04 | v1.1 — **La etapa 1 pasa de enlaces a iframes.** En la v1.0 el Host App solo enlazaba a cada módulo, y al pulsar uno se salía del cascarón. Con iframes el encabezado queda fijo y el módulo se carga adentro, sin que ningún equipo cambie su configuración. Se definen los cuatro requisitos que cumple cada módulo y qué muestra el Host App si uno falta o está caído. Se aclara que `provide`/`inject` (sección 5) solo funciona en la etapa 2: en la v1.0 se prometía para todo, y con enlaces o iframes no se puede. Se quita el requisito de `base` en Vite, que con iframes ya no hace falta. La etapa 2 no cambia |

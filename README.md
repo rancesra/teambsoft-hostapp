@@ -35,21 +35,41 @@ Si tu módulo no cumple el contrato, no se va a poder integrar. Si el contrato t
 
 ## Estado
 
-- [ ] Cascarón: encabezado, menú y enrutador
-- [ ] Etapa 1 — composición por rutas (enlaza a los tres módulos)
+- [x] Cascarón: encabezado, menú y enrutador
+- [x] Etapa 1 — composición con iframes
 - [ ] Etapa 2 — Module Federation
-- [ ] Módulo de Catálogo integrado
-- [ ] Módulo de Búsqueda integrado
-- [ ] Módulo de Carrito integrado
+- [x] Módulo de Catálogo integrado
+- [ ] Módulo de Búsqueda integrado — falta que el Equipo A tenga su módulo corriendo
+- [ ] Módulo de Carrito integrado — falta que el Equipo C tenga su módulo corriendo
+
+## Cómo funciona
+
+El encabezado queda fijo y **cada módulo se carga dentro de un iframe** debajo de él. Cada equipo construye y corre su módulo por su cuenta; el Host App solo necesita saber su dirección.
+
+Esas direcciones están en [`.env.development`](.env.development):
+
+```
+VITE_MODULO_CATALOGO=http://localhost:5173
+VITE_MODULO_BUSQUEDA=
+VITE_MODULO_CARRO=
+```
+
+**Para conectar un módulo nuevo**, se pone su dirección ahí y se reinicia el Host App. No hay que tocar código.
+
+Si un módulo no tiene dirección, el Host App muestra *"todavía no está conectado"*; si la tiene pero no responde, *"no está disponible"* con un botón para reintentar. Nunca una pantalla en blanco.
+
+Lo que tiene que cumplir cada módulo para encajar está en la sección 4 del [contrato](CONTRATO-HOSTAPP.md).
 
 ## Cómo ejecutar
-
-> El proyecto de Vue todavía no existe: lo crea **F1**. Cuando esté, estos son los comandos.
 
 ```bash
 npm install
 npm run dev
 ```
+
+Se abre en **http://localhost:5050**. El puerto es fijo porque el 5173 lo usa el módulo de Catálogo y los dos corren a la vez.
+
+Para ver algo adentro, el módulo de Catálogo tiene que estar corriendo en otra terminal (`npm run dev` en [teambsoft-frontend](https://github.com/rancesra/teambsoft-frontend)), y para que tenga datos, también el backend.
 
 **Requisito:** Node.js en versión LTS. La instalación paso a paso está en la [guía de inicio del módulo de Catálogo](https://github.com/rancesra/teambsoft-frontend/blob/main/GUIA-INICIO.md), que sirve igual aquí.
 
