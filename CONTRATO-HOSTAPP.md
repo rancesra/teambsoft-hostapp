@@ -1,8 +1,8 @@
 # Contrato del Host App — Cliente Web
 
 **Versión:** 1.2\
-**Fecha:** 2026-11-05\
-**Estado:** los cambios de la v1.2 tienen plazo para objetar hasta el **8 de noviembre de 2026**. Si los equipos A y C no objetan antes de esa fecha, quedan acordados.\
+**Fecha:** 2026-11-05 (revisada el 2026-11-12)\
+**Estado:** el Equipo C aceptó los cambios de la v1.2 el 12 de noviembre. Plazo para objetar: **martes 17 de noviembre de 2026, 12:00 m.** Si no hay objeciones antes de esa hora, quedan acordados.\
 **Equipo responsable:** Equipo B (Catálogo)\
 **Consumido por:** Equipo A (Búsqueda), Equipo C (Carrito)
 
@@ -233,3 +233,4 @@ Sigue redirigiendo a `/catalogo`. Una portada propia queda fuera de alcance en e
 | 2026-09-21 | v1.0 — versión inicial. El Host App queda a cargo del Equipo B por acuerdo de los 3 equipos |
 | 2026-10-04 | v1.1 — **La etapa 1 pasa de enlaces a iframes.** En la v1.0 el Host App solo enlazaba a cada módulo, y al pulsar uno se salía del cascarón. Con iframes el encabezado queda fijo y el módulo se carga adentro, sin que ningún equipo cambie su configuración. Se definen los cuatro requisitos que cumple cada módulo y qué muestra el Host App si uno falta o está caído. Se aclara que `provide`/`inject` (sección 5) solo funciona en la etapa 2: en la v1.0 se prometía para todo, y con enlaces o iframes no se puede. Se quita el requisito de `base` en Vite, que con iframes ya no hace falta. La etapa 2 no cambia |
 | 2026-11-05 | v1.2 — **Puertos fijos** de los tres módulos y del Host App (requisito 1), y los módulos llaman a su backend por el Kong compartido. **Nuevo mensaje `navegar`** (sección 4) para que un módulo le pida al Host App ir a otro módulo. **Se decide el botón “Agregar al carro”** (sección 9.1): Catálogo navega a `/carrito?agregar={id}` y Carrito agrega al cargar. **`/` sigue redirigiendo a `/catalogo`.** La sección 9 pasa de “Lo que falta acordar” a “Decisiones de la v1.2”. Plazo para objetar: 8 de noviembre de 2026 |
+| 2026-11-12 | v1.2, revisión — Sin cambios en lo propuesto. El plazo para objetar pasa al martes 17 de noviembre a las 12:00 m., el mismo del contrato de Catálogo v2.4 y del contrato de integración del Equipo C, porque el del 8 de noviembre venció antes de que los equipos recibieran el documento. Se registra que el Equipo C acepta la v1.2: puerto `5175`, `?agregar={id}` y modo embebido sin encabezado |
