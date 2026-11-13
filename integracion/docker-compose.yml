@@ -192,6 +192,10 @@ services:
       CATALOG_BASE_URL: http://kong:8000/api/catalogo
       # La imagen de producción no acepta el secreto de desarrollo: hay que definir uno.
       JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+      # El login real (contrato del Host App v1.3): con esto Carrito acepta también el token de
+      # Keycloak, si su versión ya lo soporta (requerimiento C5). Si no, lo ignora y sigue con JWT_SECRET.
+      KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
+      KEYCLOAK_EMISOR: http://localhost:8180/realms/tienda
     depends_on:
       carrito-redis:
         condition: service_healthy
