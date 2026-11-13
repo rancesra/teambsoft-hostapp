@@ -13,14 +13,16 @@ Es para probar los tres equipos juntos y para la presentación. Cada equipo sigu
 | `carrito` | C | [PROYECTO-ING-SOFTWARE-II](https://github.com/camiloherrera-dev/PROYECTO-ING-SOFTWARE-II), rama `develop`, imagen `prod` | `carrito-postgres` y `carrito-redis` |
 | `rabbitmq` | Compartido | Imagen `rabbitmq:4-management` | — |
 | `kong` | Compartido | Imagen `kong:3.9`, con [kong.yml](kong.yml) | — |
+| `keycloak` | Compartido | Imagen `keycloak:26.8.0`, con el realm de [keycloak/realm-tienda.json](keycloak/realm-tienda.json) | — (no guarda nada entre reinicios) |
 
 Cada servicio tiene **su propia base de datos**: nadie lee la base de otro. Se hablan solo por Kong (REST) o por RabbitMQ (eventos).
 
-**Hacia afuera solo se publican dos puertos:**
+**Hacia afuera solo se publican tres puertos:**
 
 | Puerto | Qué es |
 |---|---|
 | `8000` | Kong: `/api/catalogo`, `/api/busqueda` y `/api/carrito` |
+| `8180` | Keycloak: la pantalla de login y su consola (`/admin`), solo desde este computador |
 | `15672` | Consola web de RabbitMQ, solo desde este computador |
 
 Las bases de datos y los servicios no se ven desde afuera. Así, aunque Búsqueda y Carrito usen los dos el puerto 3000 por dentro, no chocan.
@@ -88,6 +90,31 @@ No van en el compose. Cada equipo corre el suyo con `npm run dev`, en su puerto 
 | Host App | `5050` |
 
 Kong solo acepta llamadas del navegador desde esos cuatro orígenes (CORS, en [kong.yml](kong.yml)). Si un frontend corre en otro puerto, el navegador bloquea sus llamadas.
+
+**Catálogo** se arranca contra Kong: `KONG_URL=http://localhost:8000 npm run dev` (en PowerShell, `$env:KONG_URL="http://localhost:8000"; npm run dev`).
+
+## El login (Keycloak)
+
+El Host App tiene el botón **Iniciar sesión**, que lleva a la pantalla de Keycloak, y le pasa el token a cada módulo con el mensaje `sesion` (contrato del Host App v1.3, sección 5). Usuarios de prueba del realm `tienda`:
+
+| Usuario | Contraseña | Roles | Para probar |
+|---|---|---|---|
+| `admin` | `admin123` | `admin`, `cliente` | La administración del catálogo |
+| `cliente` | `cliente123` | `cliente` | Comprar; la administración le responde `403` |
+
+Son **solo de desarrollo**: el realm se vuelve a importar en cada arranque. La consola de Keycloak está en http://localhost:8180/admin (usuario y clave `admin` / `admin`, o los que pongas en `KEYCLOAK_ADMIN` y `KEYCLOAK_ADMIN_PASSWORD`).
+
+Para pedir un token sin navegador, por ejemplo para probar con curl o Postman, está el cliente `tienda-pruebas`:
+
+```bash
+curl -s -d grant_type=password -d client_id=tienda-pruebas -d username=admin -d password=admin123 http://localhost:8180/realms/tienda/protocol/openid-connect/token
+```
+
+```powershell
+Invoke-RestMethod -Method Post http://localhost:8180/realms/tienda/protocol/openid-connect/token -Body @{grant_type="password"; client_id="tienda-pruebas"; username="admin"; password="admin123"}
+```
+
+El `access_token` de la respuesta va en la cabecera `Authorization: Bearer ...`.
 
 **Carrito:** el token de desarrollo de su frontend (`VITE_DEV_TOKEN`) tiene que estar firmado con el mismo `JWT_SECRET` de este `.env`. Si no, Carrito responde `401`.
 

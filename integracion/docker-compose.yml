@@ -55,6 +55,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # El login (contrato del Host App v1.3, sección 5). Al arrancar importa el realm "tienda" de
+  # keycloak/realm-tienda.json, que es una copia del que está en el repositorio del backend: roles
+  # admin y cliente, el cliente tienda-web del navegador y dos usuarios de prueba. No guarda nada
+  # entre reinicios. El navegador llega en http://localhost:8180; los servicios, en http://keycloak:8080.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # El emisor de los tokens queda fijo en la dirección del navegador, aunque un servicio llegue
+      # por http://keycloak:8080.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8180:8080"
+    healthcheck:
+      # La imagen no trae curl: se pregunta por el puerto de administración (9000) con bash.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   # --- Catálogo (Equipo B) -----------------------------------------------------------------------
 
   catalogo:
@@ -68,6 +95,9 @@ services:
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       EUREKA_CLIENT_ENABLED: "false"
+      # Contrato v2.5: Catálogo descarga la llave de Keycloak por la red de Docker. El emisor de los
+      # tokens sigue siendo http://localhost:8180, la dirección con la que el navegador inicia sesión.
+      KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
     depends_on:
       catalogo-mongo:
         condition: service_healthy
