@@ -1,0 +1,200 @@
+# Integración de la Tienda Virtual: los tres backends, sus bases de datos, un solo RabbitMQ y un solo
+# Kong (contrato de Catálogo v2.4, sección 10). Lo opera el Equipo B.
+#
+# Cada backend se construye desde el repositorio de GitHub de su equipo, con su propio Dockerfile:
+# nadie copia código de otro. Los frontends no van aquí: cada uno corre con "npm run dev" en su puerto
+# (sección 10.4) y llama a Kong en http://localhost:8000.
+#
+# Uso (desde esta carpeta): copiar .env.example a .env, llenarlo y correr "docker compose up -d --build".
+# El detalle está en README.md.
+
+name: tienda-integracion
+
+services:
+
+  # --- Compartido --------------------------------------------------------------------------------
+
+  # El único RabbitMQ (sección 10.1). Catálogo publica en el exchange catalogo.eventos y Búsqueda
+  # consume de él.
+  rabbitmq:
+    image: rabbitmq:4-management
+    hostname: rabbitmq
+    # Sin esto, en algunas versiones de Docker Erlang escribe su cookie como root y RabbitMQ no la puede leer.
+    user: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Define RABBITMQ_USER en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Define RABBITMQ_PASSWORD en .env}
+    ports:
+      # Solo la consola web, y solo en este computador.
+      - "127.0.0.1:${RABBIT_CONSOLA_PUERTO:-15672}:15672"
+    volumes:
+      - rabbit-datos:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # El único Kong (sección 10.2), sin base de datos: las rutas y el CORS están en kong.yml.
+  # No depende de los backends a propósito: si uno no arranca, las rutas de los otros siguen
+  # funcionando, y la del caído responde 502/503 hasta que vuelva.
+  kong:
+    image: kong:3.9
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+    volumes:
+      - ./kong.yml:/kong/kong.yml:ro
+    ports:
+      - "${KONG_PUERTO:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Catálogo (Equipo B) -----------------------------------------------------------------------
+
+  catalogo:
+    build:
+      context: ${CATALOGO_CONTEXTO:-https://github.com/rancesra/teambsoft-backend.git#main}
+    environment:
+      # El perfil integracion carga los productos de prueba con ids fijos (sección 10.5).
+      SPRING_PROFILES_ACTIVE: integracion
+      SPRING_MONGODB_URI: mongodb://catalogo-mongo:27017/catalogo
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_ENABLED: "false"
+    depends_on:
+      catalogo-mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      # Catálogo arranca después de Búsqueda para que la cola de Búsqueda ya exista cuando salgan los
+      # eventos de los productos de prueba (sección 10.5). Basta con que haya arrancado, no con que
+      # esté sana: si Búsqueda falla, Catálogo arranca igual. Spring tarda más en arrancar que lo que
+      # tarda Búsqueda en enlazar su cola.
+      busqueda:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  catalogo-mongo:
+    image: mongo:7.0
+    volumes:
+      - catalogo-mongo-datos:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Búsqueda (Equipo A) -----------------------------------------------------------------------
+
+  busqueda:
+    build:
+      context: ${BUSQUEDA_CONTEXTO:-https://github.com/Tavolistar/Grupoa_Busqueda.git#main}
+    environment:
+      PORT: "3000"
+      ELASTICSEARCH_URL: http://busqueda-elasticsearch:9200
+      REDIS_URL: redis://busqueda-redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      busqueda-elasticsearch:
+        condition: service_healthy
+      busqueda-redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Búsqueda no tiene endpoint de salud: abre el puerto 3000 solo después de crear el índice y
+    # enlazar su cola, así que "el puerto responde" es una buena señal de que está lista.
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  busqueda-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - busqueda-es-datos:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  busqueda-redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Carrito (Equipo C) ------------------------------------------------------------------------
+
+  carrito:
+    build:
+      context: ${CARRITO_CONTEXTO:-https://github.com/camiloherrera-dev/PROYECTO-ING-SOFTWARE-II.git#develop}
+      # La imagen de producción del Equipo C (su compromiso C1). Trae su propio healthcheck (/health).
+      target: prod
+    environment:
+      PORT: "3000"
+      REDIS_URL: redis://carrito-redis:6379
+      DATABASE_URL: postgres://carrito:carrito_dev@carrito-postgres:5432/carrito
+      # Carrito llama a Catálogo por Kong (contrato de integración del Equipo C, sección 3).
+      CATALOG_BASE_URL: http://kong:8000/api/catalogo
+      # La imagen de producción no acepta el secreto de desarrollo: hay que definir uno.
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+    depends_on:
+      carrito-redis:
+        condition: service_healthy
+      carrito-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  carrito-redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  carrito-postgres:
+    image: postgres:16-alpine
+    # Credenciales de desarrollo, las mismas del docker-compose del Equipo C. La base no se publica
+    # fuera de la red de Docker.
+    environment:
+      POSTGRES_USER: carrito
+      POSTGRES_PASSWORD: carrito_dev
+      POSTGRES_DB: carrito
+    volumes:
+      - carrito-postgres-datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carrito -d carrito"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rabbit-datos:
+  catalogo-mongo-datos:
+  busqueda-es-datos:
+  carrito-postgres-datos:
