@@ -37,10 +37,31 @@ export function rutaANavegar(evento, origenes) {
   return datos.ruta
 }
 
+/**
+ * La dirección sin el parámetro `agregar`, o null si no lo tiene.
+ *
+ * "Agregar al carro" navega a /carrito?agregar={id}, y el módulo de Carrito agrega el producto al
+ * cargar. Si la barra de direcciones del Host App se quedara con ?agregar=..., recargar la página
+ * volvería a cargar el iframe con esa dirección y agregaría otra unidad.
+ */
+export function direccionSinAgregar(direccion) {
+  const url = new URL(direccion)
+  if (!url.searchParams.has('agregar')) return null
+  url.searchParams.delete('agregar')
+  return url.pathname + url.search + url.hash
+}
+
 /** Empieza a escuchar los mensajes de los módulos. Se llama una vez, al arrancar el Host App. */
 export function escucharNavegacion(router, origenes = origenesDeModulos()) {
-  window.addEventListener('message', (evento) => {
+  window.addEventListener('message', async (evento) => {
     const ruta = rutaANavegar(evento, origenes)
-    if (ruta) router.push(ruta)
+    if (!ruta) return
+    await router.push(ruta)
+
+    // Se quita ?agregar= solo de la barra de direcciones, no de la ruta: el iframe ya se está cargando
+    // con él y lo necesita. Con replaceState el enrutador no navega otra vez; se actualiza también su
+    // registro del historial ("current") para que atrás y adelante sigan funcionando.
+    const limpia = direccionSinAgregar(window.location.href)
+    if (limpia) window.history.replaceState({ ...window.history.state, current: limpia }, '', limpia)
   })
 }

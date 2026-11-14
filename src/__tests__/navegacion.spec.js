@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { origenesDeModulos, rutaANavegar } from '@/navegacion'
+import { direccionSinAgregar, origenesDeModulos, rutaANavegar } from '@/navegacion'
 
 const ORIGENES = new Set(['http://localhost:5173', 'http://localhost:5175'])
 const navegar = (ruta, origin = 'http://localhost:5173') => rutaANavegar({ origin, data: { tipo: 'navegar', ruta } }, ORIGENES)
@@ -40,5 +40,16 @@ describe('origenesDeModulos', () => {
       { url: 'http://localhost:5175' },
     ])
     expect([...origenes]).toEqual(['http://localhost:5173', 'http://localhost:5175'])
+  })
+})
+
+describe('direccionSinAgregar', () => {
+  it('quita agregar y conserva la ruta, los demás parámetros y el ancla', () => {
+    expect(direccionSinAgregar('http://localhost:5050/carrito?agregar=674000000000000000000001')).toBe('/carrito')
+    expect(direccionSinAgregar('http://localhost:5050/carrito?x=1&agregar=abc#arriba')).toBe('/carrito?x=1#arriba')
+  })
+
+  it('devuelve null si la dirección no tiene agregar', () => {
+    expect(direccionSinAgregar('http://localhost:5050/carrito/pedidos')).toBeNull()
   })
 })
