@@ -1,5 +1,8 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+import { sesion } from '@/sesion'
+import { enviarSesion } from '@/sesionCompartida'
 
 // Carga un módulo dentro de un iframe. Antes de mostrarlo comprueba que su servidor responda:
 // si el iframe apuntara a un servidor apagado, se vería la página de error del navegador dentro
@@ -31,11 +34,24 @@ async function comprobar() {
 }
 
 watch(() => props.modulo.clave, comprobar, { immediate: true })
+
+// La sesión le llega al módulo apenas carga su página, y otra vez si cambia: al iniciar o cerrar
+// sesión, o cuando el token se renueva (contrato v1.3, sección 5).
+const marco = ref(null)
+const origen = computed(() => (props.modulo.url ? new URL(props.modulo.url).origin : null))
+
+function compartirSesion() {
+  if (marco.value && origen.value) enviarSesion(marco.value.contentWindow, origen.value)
+}
+
+watch(() => sesion.token, compartirSesion)
 </script>
 
 <template>
   <iframe
     v-if="estado === 'listo'"
+    ref="marco"
+    @load="compartirSesion"
     :src="modulo.url + ruta"
     :title="`Módulo de ${modulo.nombre}`"
     class="marco"
