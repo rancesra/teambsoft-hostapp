@@ -24,6 +24,11 @@ export const MODULOS = [
   },
 ]
 
+// Entradas del menú que no son un módulo aparte, sino una pantalla de uno de los tres
+// (contrato v1.3, sección 2). "Órdenes" es el historial de pedidos del módulo de Carrito: el
+// Equipo C es dueño de los pedidos, así que el Host App solo lleva hasta allá.
+export const ATAJOS = [{ nombre: 'Órdenes', ruta: '/carrito/pedidos' }]
+
 export function buscarModulo(clave) {
   return MODULOS.find((m) => m.clave === clave) ?? null
 }
