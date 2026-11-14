@@ -39,8 +39,9 @@ Si tu módulo no cumple el contrato, no se va a poder integrar. Si el contrato t
 - [x] Etapa 1 — composición con iframes
 - [ ] Etapa 2 — Module Federation
 - [x] Módulo de Catálogo integrado
-- [ ] Módulo de Búsqueda integrado — falta que el Equipo A tenga su módulo corriendo
-- [ ] Módulo de Carrito integrado — falta que el Equipo C tenga su módulo corriendo
+- [x] Mensaje `navegar`: un módulo le pide al cascarón ir a otro módulo (Catálogo → Carrito)
+- [ ] Módulo de Búsqueda integrado — dirección configurada (`5174`); falta que el Equipo A lo tenga corriendo
+- [ ] Módulo de Carrito integrado — dirección configurada (`5175`); falta que el Equipo C lo tenga corriendo
 
 ## Cómo funciona
 
@@ -50,13 +51,15 @@ Esas direcciones están en [`.env.development`](.env.development):
 
 ```
 VITE_MODULO_CATALOGO=http://localhost:5173
-VITE_MODULO_BUSQUEDA=
-VITE_MODULO_CARRO=
+VITE_MODULO_BUSQUEDA=http://localhost:5174
+VITE_MODULO_CARRO=http://localhost:5175
 ```
 
 **Para conectar un módulo nuevo**, se pone su dirección ahí y se reinicia el Host App. No hay que tocar código.
 
 Si un módulo no tiene dirección, el Host App muestra *"todavía no está conectado"*; si la tiene pero no responde, *"no está disponible"* con un botón para reintentar. Nunca una pantalla en blanco.
+
+**Ir de un módulo a otro.** Un módulo no puede cambiar la dirección del cascarón desde su iframe, así que se lo pide con un mensaje: `window.parent.postMessage({ tipo: 'navegar', ruta: '/carrito?agregar=ID' }, '*')`. El Host App ([src/navegacion.js](src/navegacion.js)) solo lo obedece si viene de la dirección de uno de los tres módulos y si la ruta empieza por `/catalogo`, `/busqueda` o `/carrito`. Así funciona el botón "Agregar al carro" de Catálogo.
 
 Lo que tiene que cumplir cada módulo para encajar está en la sección 4 del [contrato](CONTRATO-HOSTAPP.md).
 
