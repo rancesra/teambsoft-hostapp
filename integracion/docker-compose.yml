@@ -1,5 +1,5 @@
-# Integración de la Tienda Virtual: los tres backends, sus bases de datos, un solo RabbitMQ y un solo
-# Kong (contrato de Catálogo v2.4, sección 10). Lo opera el Equipo B.
+# Integración de la Tienda Virtual: los tres backends, sus bases de datos, un solo RabbitMQ, un solo
+# Kong, Keycloak y Eureka (contrato de Catálogo v2.4, sección 10). Lo opera el Equipo B.
 #
 # Cada backend se construye desde el repositorio de GitHub de su equipo, con su propio Dockerfile:
 # nadie copia código de otro. Los frontends no van aquí: cada uno corre con "npm run dev" en su puerto
@@ -82,6 +82,23 @@ services:
       retries: 12
       start_period: 30s
 
+  # El registro de servicios (Eureka). Cada microservicio se anuncia al arrancar con su nombre, su IP
+  # y su puerto, y renueva su registro cada 10 segundos; si deja de hacerlo, sale de la lista. El
+  # estado (UP o DOWN) sale del /actuator/health del servicio. Consola en http://localhost:8761.
+  # Se construye desde la carpeta eureka/ del repositorio del backend.
+  eureka:
+    build:
+      context: ${EUREKA_CONTEXTO:-https://github.com/rancesra/teambsoft-backend.git#main:eureka}
+    ports:
+      # Solo en este computador.
+      - "127.0.0.1:${EUREKA_PUERTO:-8761}:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # --- Catálogo (Equipo B) -----------------------------------------------------------------------
 
   catalogo:
@@ -94,7 +111,8 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      EUREKA_CLIENT_ENABLED: "false"
+      # Se registra en Eureka con el nombre "catalogo" (spring.application.name).
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       # Contrato v2.5: Catálogo descarga la llave de Keycloak por la red de Docker. El emisor de los
       # tokens sigue siendo http://localhost:8180, la dirección con la que el navegador inicia sesión.
       KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
@@ -102,6 +120,8 @@ services:
       catalogo-mongo:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      eureka:
         condition: service_healthy
       # Catálogo arranca después de Búsqueda para que la cola de Búsqueda ya exista cuando salgan los
       # eventos de los productos de prueba (sección 10.5). Basta con que haya arrancado, no con que

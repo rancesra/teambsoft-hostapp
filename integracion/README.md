@@ -1,6 +1,6 @@
 # Integración de la Tienda Virtual
 
-Levanta **los tres backends juntos** —Catálogo (B), Búsqueda (A) y Carrito (C)— con sus bases de datos, **un solo RabbitMQ** y **un solo Kong**, tal como lo define el [contrato de Catálogo v2.4](https://github.com/rancesra/teambsoft-backend/blob/main/docs/CONTRATO-CATALOGO.md), sección 10. Lo opera el Equipo B.
+Levanta **los tres backends juntos** —Catálogo (B), Búsqueda (A) y Carrito (C)— con sus bases de datos, **un solo RabbitMQ**, **un solo Kong**, Keycloak y Eureka, tal como lo define el [contrato de Catálogo v2.4](https://github.com/rancesra/teambsoft-backend/blob/main/docs/CONTRATO-CATALOGO.md), sección 10. Lo opera el Equipo B.
 
 Es para probar los tres equipos juntos y para la presentación. Cada equipo sigue teniendo su propio `docker-compose.yml` para desarrollar solo.
 
@@ -14,16 +14,18 @@ Es para probar los tres equipos juntos y para la presentación. Cada equipo sigu
 | `rabbitmq` | Compartido | Imagen `rabbitmq:4-management` | — |
 | `kong` | Compartido | Imagen `kong:3.9`, con [kong.yml](kong.yml) | — |
 | `keycloak` | Compartido | Imagen `keycloak:26.8.0`, con el realm de [keycloak/realm-tienda.json](keycloak/realm-tienda.json) | — (no guarda nada entre reinicios) |
+| `eureka` | Compartido | [teambsoft-backend](https://github.com/rancesra/teambsoft-backend/tree/main/eureka), carpeta `eureka/`, rama `main` | — (el registro vive en memoria) |
 
 Cada servicio tiene **su propia base de datos**: nadie lee la base de otro. Se hablan solo por Kong (REST) o por RabbitMQ (eventos).
 
-**Hacia afuera solo se publican tres puertos:**
+**Hacia afuera solo se publican cuatro puertos:**
 
 | Puerto | Qué es |
 |---|---|
 | `8000` | Kong: `/api/catalogo`, `/api/busqueda` y `/api/carrito` |
 | `8180` | Keycloak: la pantalla de login y su consola (`/admin`), solo desde este computador |
 | `15672` | Consola web de RabbitMQ, solo desde este computador |
+| `8761` | Consola de Eureka, con los servicios registrados, solo desde este computador |
 
 Las bases de datos y los servicios no se ven desde afuera. Así, aunque Búsqueda y Carrito usen los dos el puerto 3000 por dentro, no chocan.
 
@@ -62,6 +64,32 @@ Invoke-RestMethod http://localhost:8000/api/catalogo/productos/67400000000000000
 ```
 
 Debe responder la *Camiseta básica algodón*, con `stock: 100` y `activo: true`.
+
+## El registro de servicios (Eureka)
+
+Abre `http://localhost:8761`. En *Instances currently registered with Eureka* debe aparecer **`CATALOGO`** con estado **`UP`** y su IP dentro de Docker. Lo mismo, en JSON:
+
+```bash
+curl -H "Accept: application/json" http://localhost:8761/eureka/apps/CATALOGO
+```
+
+```powershell
+Invoke-RestMethod -Headers @{ Accept = "application/json" } http://localhost:8761/eureka/apps/CATALOGO
+```
+
+Qué se ve en la presentación:
+
+| Si… | Eureka muestra… |
+|---|---|
+| Catálogo arranca | `CATALOGO` en `UP`, unos segundos después de quedar sano |
+| Se detiene su MongoDB (`docker compose stop catalogo-mongo`) | `CATALOGO` en `DOWN`, en alrededor de un minuto: el estado sale de su `/actuator/health` |
+| Se detiene Catálogo (`docker compose stop catalogo`) | `CATALOGO` en `DOWN` al instante, porque avisa al apagarse, y fuera de la lista unos 30 segundos después |
+| Vuelve Catálogo (`docker compose start catalogo`) | `CATALOGO` en `UP` en cuanto queda sano |
+| Se reinicia Eureka | Catálogo se vuelve a registrar solo, en unos segundos |
+
+El aviso en rojo *THE SELF PRESERVATION MODE IS TURNED OFF* es esperado. La autopreservación evita que Eureka borre servicios cuando muchos dejan de responder a la vez (por ejemplo, en un corte de red), pero con un solo servicio de cada tipo dejaría anunciados a los que de verdad se cayeron. Por eso está apagada.
+
+Búsqueda y Carrito están hechos en Node.js y hoy no se registran: Kong los encuentra por su nombre en la red de Docker, igual que a Catálogo.
 
 ## Los productos de prueba
 
@@ -134,13 +162,14 @@ En el `.env`, apunta el servicio a la carpeta de tu repositorio local:
 
 ```
 CATALOGO_CONTEXTO=C:/Users/tu-usuario/Desktop/teambsoft-backend
+EUREKA_CONTEXTO=C:/Users/tu-usuario/Desktop/teambsoft-backend/eureka
 ```
 
 Después reconstruye ese servicio con `docker compose up -d --build catalogo`.
 
 ### Si un puerto ya está ocupado
 
-Si otro programa usa el `8000` o el `15672`, cámbialos en el `.env` con `KONG_PUERTO` y `RABBIT_CONSOLA_PUERTO`. Si cambias el de Kong, los frontends tienen que apuntar al nuevo.
+Si otro programa usa el `8000`, el `15672` o el `8761`, cámbialos en el `.env` con `KONG_PUERTO`, `RABBIT_CONSOLA_PUERTO` y `EUREKA_PUERTO`. Si cambias el de Kong, los frontends tienen que apuntar al nuevo.
 
 ## Si algo falla
 
