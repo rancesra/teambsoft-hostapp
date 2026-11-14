@@ -86,6 +86,10 @@ Para ver algo adentro, el módulo de Catálogo tiene que estar corriendo en otra
 
 **Requisito:** Node.js en versión LTS. La instalación paso a paso está en la [guía de inicio del módulo de Catálogo](https://github.com/rancesra/teambsoft-frontend/blob/main/GUIA-INICIO.md), que sirve igual aquí.
 
+### Los tres backends juntos
+
+La carpeta [`integracion/`](integracion/README.md) levanta con un solo comando los backends de Catálogo, Búsqueda y Carrito, con un solo RabbitMQ y un solo Kong en `http://localhost:8000`. Es lo que se usa para probar los tres equipos juntos y para la presentación.
+
 ## Cómo trabajar en este repositorio
 
 Mismo flujo que el resto del proyecto: **nunca se trabaja en `main`**, cada tarea en su rama y se entrega con un pull request. Está explicado paso a paso en la [guía de git](https://github.com/rancesra/teambsoft-frontend/blob/main/GUIA-GIT.md).
