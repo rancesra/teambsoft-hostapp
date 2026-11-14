@@ -157,6 +157,8 @@ services:
       ELASTICSEARCH_URL: http://busqueda-elasticsearch:9200
       REDIS_URL: redis://busqueda-redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      # Se registra en Eureka como "busqueda" (si su versión ya trae el registro; si no, la ignora).
+      EUREKA_URL: http://eureka:8761/eureka
     depends_on:
       busqueda-elasticsearch:
         condition: service_healthy
@@ -216,6 +218,8 @@ services:
       # Keycloak, si su versión ya lo soporta (requerimiento C5). Si no, lo ignora y sigue con JWT_SECRET.
       KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
       KEYCLOAK_EMISOR: http://localhost:8180/realms/tienda
+      # Se registra en Eureka como "carrito" (si su versión ya trae el registro; si no, la ignora).
+      EUREKA_URL: http://eureka:8761/eureka
     depends_on:
       carrito-redis:
         condition: service_healthy

@@ -67,7 +67,7 @@ Debe responder la *Camiseta básica algodón*, con `stock: 100` y `activo: true`
 
 ## El registro de servicios (Eureka)
 
-Abre `http://localhost:8761`. En *Instances currently registered with Eureka* debe aparecer **`CATALOGO`** con estado **`UP`** y su IP dentro de Docker. Lo mismo, en JSON:
+Abre `http://localhost:8761`. En *Instances currently registered with Eureka* debe aparecer **`CATALOGO`** con estado **`UP`** y su IP dentro de Docker, y también **`BUSQUEDA`** y **`CARRITO`** cuando sus equipos apliquen el registro (ver abajo). Lo mismo, en JSON:
 
 ```bash
 curl -H "Accept: application/json" http://localhost:8761/eureka/apps/CATALOGO
@@ -89,7 +89,9 @@ Qué se ve en la presentación:
 
 El aviso en rojo *THE SELF PRESERVATION MODE IS TURNED OFF* es esperado. La autopreservación evita que Eureka borre servicios cuando muchos dejan de responder a la vez (por ejemplo, en un corte de red), pero con un solo servicio de cada tipo dejaría anunciados a los que de verdad se cayeron. Por eso está apagada.
 
-Búsqueda y Carrito están hechos en Node.js y hoy no se registran: Kong los encuentra por su nombre en la red de Docker, igual que a Catálogo.
+**Búsqueda y Carrito** se registran como `BUSQUEDA` y `CARRITO` cuando su versión trae el registro (el parche `*-eureka.patch` del 14 de noviembre, en `docs/integracion` del backend). Este `docker-compose` ya les pasa `EUREKA_URL`: si su versión todavía no lo usa, la ignoran. Su estado sale de su propia salud: Carrito de su `/ready` (Redis) y Búsqueda de su Elasticsearch.
+
+Kong no consulta Eureka: encuentra a cada servicio por su nombre en la red de Docker. La versión libre de Kong no trae integración con Eureka.
 
 ## Los productos de prueba
 
