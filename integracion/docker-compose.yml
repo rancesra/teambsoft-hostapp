@@ -1,14 +1,53 @@
 # Integración de la Tienda Virtual: los tres backends, sus bases de datos, un solo RabbitMQ, un solo
 # Kong, Keycloak y Eureka (contrato de Catálogo v2.4, sección 10). Lo opera el Equipo B.
 #
-# Cada backend se construye desde el repositorio de GitHub de su equipo, con su propio Dockerfile:
-# nadie copia código de otro. Los frontends no van aquí: cada uno corre con "npm run dev" en su puerto
-# (sección 10.4) y llama a Kong en http://localhost:8000.
+# Cada servicio se construye desde el repositorio de GitHub de su equipo: nadie copia código de otro.
+# Los cuatro frontends (el Host App y los módulos de Catálogo, Búsqueda y Carrito) también van aquí,
+# compilados y servidos con "vite preview" (contrato del Host App v1.4, sección 9).
 #
-# Uso (desde esta carpeta): copiar .env.example a .env, llenarlo y correr "docker compose up -d --build".
-# El detalle está en README.md.
+# Dos formas de usarlo (detalle en README.md):
+# - En este computador: copiar .env.example a .env, llenar las credenciales y correr
+#   "docker compose up -d --build". La tienda queda en http://localhost:5050.
+# - Publicada en internet: además, llenar las direcciones públicas y el token del túnel en el .env y
+#   correr "docker compose --profile publico up -d --build". La tienda queda en https://tienda.<dominio>.
 
 name: tienda-integracion
+
+# El Dockerfile de los cuatro frontends. Instala, compila con las variables VITE_ que le pasa cada
+# servicio y sirve el resultado con "vite preview". La configuración extra (vite.despliegue.config.mjs)
+# se suma a la del equipo: deja entrar con cualquier nombre de host (los subdominios) y reenvía /api a Kong.
+x-dockerfile-frontend: &dockerfile-frontend |
+  FROM node:22-alpine
+  WORKDIR /app
+  COPY . .
+  # Si se construye desde una carpeta local, se descarta su node_modules (puede ser de otro sistema).
+  RUN rm -rf node_modules dist && npm ci --no-audit --no-fund
+  ARG VITE_MODULO_CATALOGO
+  ARG VITE_MODULO_BUSQUEDA
+  ARG VITE_MODULO_CARRO
+  ARG VITE_KEYCLOAK_URL
+  ARG VITE_HOST_APP
+  ARG VITE_API_URL
+  RUN npx vite build
+  COPY <<'FIN' vite.despliegue.config.mjs
+  import { mergeConfig } from 'vite'
+  import base from './vite.config.js'
+  export default mergeConfig(base, {
+    preview: {
+      host: true,
+      port: Number(process.env.PUERTO),
+      strictPort: true,
+      allowedHosts: true,
+      proxy: { '/api': { target: 'http://kong:8000', changeOrigin: true } },
+    },
+  })
+  FIN
+  CMD ["npx", "vite", "preview", "--config", "vite.despliegue.config.mjs"]
+
+x-servicio-frontend: &servicio-frontend
+  depends_on:
+    - kong
+  restart: unless-stopped
 
 services:
 
@@ -58,7 +97,8 @@ services:
   # El login (contrato del Host App v1.3, sección 5). Al arrancar importa el realm "tienda" de
   # keycloak/realm-tienda.json, que es una copia del que está en el repositorio del backend: roles
   # admin y cliente, el cliente tienda-web del navegador y dos usuarios de prueba. No guarda nada
-  # entre reinicios. El navegador llega en http://localhost:8180; los servicios, en http://keycloak:8080.
+  # entre reinicios. El navegador llega en http://localhost:8180 (publicada, en https://login.<dominio>);
+  # los servicios, en http://keycloak:8080.
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.0
     command: ["start-dev", "--import-realm"]
@@ -67,8 +107,17 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       # El emisor de los tokens queda fijo en la dirección del navegador, aunque un servicio llegue
       # por http://keycloak:8080.
-      KC_HOSTNAME: http://localhost:8180
+      # Publicada, es https://login.<dominio>. El túnel le avisa que la conexión original era HTTPS con
+      # los encabezados X-Forwarded-*.
+      KC_HOSTNAME: ${URL_LOGIN:-http://localhost:8180}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_PROXY_HEADERS: xforwarded
+      # El realm (keycloak/realm-tienda.json) toma de aquí las direcciones a las que puede volver el
+      # login y las claves de los usuarios de prueba. Sin valor, usa las de localhost y admin123 / cliente123.
+      URL_TIENDA: ${URL_TIENDA:-http://localhost:5050}
+      URL_CATALOGO_WEB: ${URL_CATALOGO_WEB:-http://localhost:5173}
+      CLAVE_ADMIN_TIENDA: ${CLAVE_ADMIN_TIENDA:-admin123}
+      CLAVE_CLIENTE_TIENDA: ${CLAVE_CLIENTE_TIENDA:-cliente123}
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
@@ -114,8 +163,9 @@ services:
       # Se registra en Eureka con el nombre "catalogo" (spring.application.name).
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       # Contrato v2.5: Catálogo descarga la llave de Keycloak por la red de Docker. El emisor de los
-      # tokens sigue siendo http://localhost:8180, la dirección con la que el navegador inicia sesión.
+      # tokens es la dirección con la que el navegador inicia sesión (la misma de KC_HOSTNAME).
       KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
+      KEYCLOAK_EMISOR: ${URL_LOGIN:-http://localhost:8180}/realms/tienda
     depends_on:
       catalogo-mongo:
         condition: service_healthy
@@ -217,7 +267,7 @@ services:
       # El login real (contrato del Host App v1.3): con esto Carrito acepta también el token de
       # Keycloak, si su versión ya lo soporta (requerimiento C5). Si no, lo ignora y sigue con JWT_SECRET.
       KEYCLOAK_LLAVES: http://keycloak:8080/realms/tienda/protocol/openid-connect/certs
-      KEYCLOAK_EMISOR: http://localhost:8180/realms/tienda
+      KEYCLOAK_EMISOR: ${URL_LOGIN:-http://localhost:8180}/realms/tienda
       # Se registra en Eureka como "carrito" (si su versión ya trae el registro; si no, la ignora).
       EUREKA_URL: http://eureka:8761/eureka
     depends_on:
@@ -250,6 +300,86 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # --- Frontends ---------------------------------------------------------------------------------
+  #
+  # Cada frontend se construye desde el repositorio de su equipo con el mismo Dockerfile (el de arriba,
+  # x-frontend), sin agregarle archivos a nadie. Las direcciones se fijan al compilar (variables VITE_)
+  # y salen del .env: localhost en este computador, los subdominios cuando se publica.
+  # Las llamadas a /api las reenvía cada frontend a Kong por dentro de Docker, así que el navegador
+  # nunca sale de su propio origen y no hace falta CORS.
+
+  hostapp:
+    build:
+      context: ${HOSTAPP_CONTEXTO:-https://github.com/rancesra/teambsoft-hostapp.git#main}
+      dockerfile_inline: *dockerfile-frontend
+      args:
+        VITE_MODULO_CATALOGO: ${URL_CATALOGO_WEB:-http://localhost:5173}
+        VITE_MODULO_BUSQUEDA: ${URL_BUSQUEDA_WEB:-http://localhost:5174}
+        VITE_MODULO_CARRO: ${URL_CARRO_WEB:-http://localhost:5175}
+        VITE_KEYCLOAK_URL: ${URL_LOGIN:-http://localhost:8180}/realms/tienda
+    environment:
+      PUERTO: "5050"
+    ports:
+      - "127.0.0.1:5050:5050"
+    <<: *servicio-frontend
+
+  catalogo-web:
+    build:
+      context: ${CATALOGO_WEB_CONTEXTO:-https://github.com/rancesra/teambsoft-frontend.git#main}
+      dockerfile_inline: *dockerfile-frontend
+      args:
+        VITE_KEYCLOAK_URL: ${URL_LOGIN:-http://localhost:8180}/realms/tienda
+        VITE_HOST_APP: ${URL_TIENDA:-http://localhost:5050}
+    environment:
+      PUERTO: "5173"
+    ports:
+      - "127.0.0.1:${CATALOGO_WEB_PUERTO:-5173}:5173"
+    <<: *servicio-frontend
+
+  busqueda-web:
+    build:
+      context: ${BUSQUEDA_WEB_CONTEXTO:-https://github.com/Tavolistar/Grupoa_Busqueda.git#main:busqueda-frontend}
+      dockerfile_inline: *dockerfile-frontend
+      args:
+        # Relativa: el navegador llama a su propio origen y el frontend la reenvía a Kong.
+        VITE_API_URL: /api/busqueda
+    environment:
+      PUERTO: "5174"
+    ports:
+      - "127.0.0.1:5174:5174"
+    <<: *servicio-frontend
+
+  carrito-web:
+    build:
+      context: ${CARRITO_WEB_CONTEXTO:-https://github.com/camiloherrera-dev/PROYECTO-ING-SOFTWARE-II.git#develop:Frontend}
+      dockerfile_inline: *dockerfile-frontend
+      args:
+        VITE_HOST_APP: ${URL_TIENDA:-http://localhost:5050}
+    environment:
+      PUERTO: "5175"
+    ports:
+      - "127.0.0.1:5175:5175"
+    <<: *servicio-frontend
+
+  # --- Publicación en internet (solo con --profile publico) ---------------------------------------
+  #
+  # El túnel de Cloudflare (ARQUITECTURA-CATALOGO v1.8): sale de este computador hacia Cloudflare, que
+  # publica los subdominios con HTTPS y los trae de vuelta por el túnel. No se abre ningún puerto del
+  # router. A qué servicio va cada subdominio se configura en el panel de Cloudflare (README.md).
+  tunel:
+    image: cloudflare/cloudflared:2026.10.7
+    profiles: [publico]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNEL_TOKEN:-}
+    depends_on:
+      - hostapp
+      - catalogo-web
+      - busqueda-web
+      - carrito-web
+      - keycloak
+    restart: unless-stopped
 
 volumes:
   rabbit-datos:
