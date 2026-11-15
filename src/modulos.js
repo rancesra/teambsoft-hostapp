@@ -32,3 +32,22 @@ export const ATAJOS = [{ nombre: 'Órdenes', ruta: '/carrito/pedidos' }]
 export function buscarModulo(clave) {
   return MODULOS.find((m) => m.clave === clave) ?? null
 }
+
+// Las entradas del menú, en orden: un módulo nuevo o un atajo nuevo aparece en el menú solo.
+export const ENTRADAS = [...MODULOS.map((m) => ({ nombre: m.nombre, ruta: `/${m.clave}` })), ...ATAJOS]
+
+/**
+ * La entrada del menú que corresponde a una ruta, o null. Si varias coinciden gana la más
+ * específica: /carrito/pedidos es «Órdenes» y no «Carro». La usan el menú, para marcar dónde está
+ * el usuario, y el título de la pestaña.
+ */
+export function entradaDeRuta(ruta) {
+  const coincide = (e) => ruta === e.ruta || ruta.startsWith(e.ruta + '/')
+  return ENTRADAS.filter(coincide).sort((a, b) => b.ruta.length - a.ruta.length)[0] ?? null
+}
+
+/** El título de la pestaña: «Catálogo · Tienda Virtual», o solo «Tienda Virtual» fuera de los módulos. */
+export function tituloDePagina(ruta) {
+  const entrada = entradaDeRuta(ruta)
+  return entrada ? `${entrada.nombre} · Tienda Virtual` : 'Tienda Virtual'
+}

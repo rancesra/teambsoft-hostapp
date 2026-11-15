@@ -2,15 +2,17 @@
 import { RouterView } from 'vue-router'
 
 import EncabezadoHost from '@/componentes/EncabezadoHost.vue'
+import PieHost from '@/componentes/PieHost.vue'
 </script>
 
 <template>
-  <!-- El cascarón: el encabezado se queda fijo y debajo se carga el módulo de cada ruta. -->
+  <!-- El cascarón: el encabezado y el pie se quedan fijos, y entre los dos se carga el módulo de cada ruta. -->
   <div class="host">
     <EncabezadoHost />
     <main class="contenido">
       <RouterView />
     </main>
+    <PieHost />
   </div>
 </template>
 

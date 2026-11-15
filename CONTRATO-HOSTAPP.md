@@ -1,8 +1,8 @@
 # Contrato del Host App — Cliente Web
 
-**Versión:** 1.4\
+**Versión:** 1.5\
 **Fecha:** 2026-11-15\
-**Estado:** el Equipo C aceptó los cambios de la v1.2 el 12 de noviembre. La v1.3 agrega el login y el menú «Órdenes» (sección 10), y la v1.4 el despliegue en internet (sección 11), que no les pide a A ni a C cambiar código. Plazo para objetar las tres: **martes 17 de noviembre de 2026, 12:00 m.** Si no hay objeciones antes de esa hora, quedan acordadas.\
+**Estado:** el Equipo C aceptó los cambios de la v1.2 el 12 de noviembre. La v1.3 agrega el login y el menú «Órdenes» (sección 10), la v1.4 el despliegue en internet (sección 11) y la v1.5 el botón «Agregar al carro» en las tarjetas de Catálogo (sección 9.1). Ninguna de las dos les pide a A ni a C cambiar código. Plazo para objetar las cuatro: **martes 17 de noviembre de 2026, 12:00 m.** Si no hay objeciones antes de esa hora, quedan acordadas.\
 **Equipo responsable:** Equipo B (Catálogo)\
 **Consumido por:** Equipo A (Búsqueda), Equipo C (Carrito)
 
@@ -251,7 +251,7 @@ Node.js en versión LTS.
 
 | Paso | Quién | Qué hace |
 |---|---|---|
-| 1 | Catálogo | En la vista de detalle pinta el botón, **solo si el producto está activo, tiene stock y el módulo está embebido** |
+| 1 | Catálogo | En la vista de detalle y, desde la v1.5, en cada tarjeta del listado pinta el botón, **solo si el producto está activo, tiene stock y el módulo está embebido** |
 | 2 | Catálogo | Al pulsarlo, envía `navegar` con la ruta `/carrito?agregar={id}` (sección 4) |
 | 3 | Host App | Valida el mensaje y navega a `/carrito?agregar={id}` |
 | 4 | Carrito | Al cargar, si la dirección trae `agregar`, agrega **una unidad** de ese producto con su propio endpoint (`POST /api/carrito/items`) y muestra el carrito |
@@ -352,3 +352,4 @@ Kong, los backends, las bases de datos y las consolas de RabbitMQ y Eureka **no 
 | 2026-11-12 | v1.2, revisión — Sin cambios en lo propuesto. El plazo para objetar pasa al martes 17 de noviembre a las 12:00 m., el mismo del contrato de Catálogo v2.4 y del contrato de integración del Equipo C, porque el del 8 de noviembre venció antes de que los equipos recibieran el documento. Se registra que el Equipo C acepta la v1.2: puerto `5175`, `?agregar={id}` y modo embebido sin encabezado |
 | 2026-11-13 | v1.3 — **Login con Keycloak** (sección 10.1): el Host App inicia y cierra la sesión, y se la pasa a cada módulo con el mensaje `sesion`; los módulos la piden con `pedir-sesion` y piden el login con `iniciar-sesion` (sección 5.1, con las reglas de origen). La sección 5 se divide en etapa 1 (mensajes) y etapa 2 (`provide`/`inject`); `sesion` pasa de `{ token, userId }` a `{ token, usuario }`. **«Órdenes» en el menú** (sección 10.2) abre `/carrito/pedidos`. **Sección 2:** la ruta `/sesion` es del Host App. **Sección 8:** sale la autenticación real; quedan fuera el registro de usuarios y cerrar sesión desde un módulo. La sección 10 pasa a ser «Decisiones de la v1.3» y el historial, la 11 |
 | 2026-11-15 | v1.4 — **Despliegue en internet** (sección 11): los cuatro frontends entran al `docker-compose` de integración, construidos desde el repositorio de cada equipo y servidos con `vite preview`, y un túnel de Cloudflare publica cada uno en su subdominio con HTTPS. **Requisito 1:** las direcciones de la tabla son las de desarrollo; dentro del compose cada módulo llama a su propio origen y su servidor reenvía `/api` a Kong. **Sección 5.1:** las direcciones de las reglas salen de la configuración de cada lado. **Sección 8:** sale el despliegue. A y C no cambian código. El historial pasa a la sección 12 |
+| 2026-11-15 | v1.5 — **Sección 9.1:** Catálogo también pinta «Agregar al carro» en cada tarjeta del listado, con las mismas condiciones y el mismo mensaje `navegar` a `/carrito?agregar={id}`; a Carrito le llega lo mismo que antes. El cascarón, sin tocar la superficie de integración, gana un encabezado que se acomoda al celular, el título de la pestaña según la sección y un pie de página |

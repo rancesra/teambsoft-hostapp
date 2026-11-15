@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import { MODULOS } from '@/modulos'
+import { MODULOS, tituloDePagina } from '@/modulos'
 
 // Una ruta por módulo, con todo lo que cuelgue de su prefijo. /catalogo, /catalogo/123 y
 // /catalogo/admin caen las tres en la misma vista, que carga el módulo de Catálogo.
@@ -11,7 +11,7 @@ const rutasDeModulos = MODULOS.map((modulo) => ({
   props: { clave: modulo.clave },
 }))
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     // Catálogo es la puerta de entrada: es el único módulo que hoy tiene backend funcionando.
@@ -20,3 +20,10 @@ export default createRouter({
     { path: '/:rutaInvalida(.*)', component: () => import('@/vistas/VistaNoEncontrada.vue') },
   ],
 })
+
+// El título de la pestaña dice en qué sección está el usuario, como el menú.
+router.afterEach((destino) => {
+  document.title = tituloDePagina(destino.path)
+})
+
+export default router
