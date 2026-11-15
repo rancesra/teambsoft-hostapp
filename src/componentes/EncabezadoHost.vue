@@ -2,21 +2,16 @@
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 
-import { ATAJOS, MODULOS } from '@/modulos'
+import { ENTRADAS, entradaDeRuta } from '@/modulos'
 import { cerrarSesion, iniciarSesion, loginDisponible, sesion } from '@/sesion'
 
 const route = useRoute()
 
-// El menú sale de la lista de módulos y de los atajos: un módulo nuevo aparece aquí solo.
-const entradas = [...MODULOS.map((m) => ({ nombre: m.nombre, ruta: `/${m.clave}` })), ...ATAJOS]
-
-function coincide(ruta) {
-  return route.path === ruta || route.path.startsWith(ruta + '/')
-}
-
 // Se marca la entrada más específica: en /carrito/pedidos se marca "Órdenes" y no "Carro".
+const entradaActiva = computed(() => entradaDeRuta(route.path))
+
 function activa(entrada) {
-  return coincide(entrada.ruta) && !entradas.some((o) => o.ruta.length > entrada.ruta.length && coincide(o.ruta))
+  return entradaActiva.value?.ruta === entrada.ruta
 }
 
 const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
@@ -31,7 +26,7 @@ const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
 
     <nav class="menu">
       <RouterLink
-        v-for="e in entradas"
+        v-for="e in ENTRADAS"
         :key="e.ruta"
         :to="e.ruta"
         :class="{ activa: activa(e) }"
@@ -46,7 +41,7 @@ const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
     <div v-if="loginDisponible" class="cuenta">
       <template v-if="sesion.usuario">
         <span class="usuario">
-          {{ sesion.usuario.nombre }}
+          <span class="nombre">{{ sesion.usuario.nombre }}</span>
           <span v-if="esAdmin" class="etiqueta">admin</span>
         </span>
         <button class="boton-texto" @click="cerrarSesion()">Cerrar sesión</button>
@@ -70,6 +65,7 @@ const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
 
 .marca {
   display: flex;
+  white-space: nowrap;
   align-items: center;
   gap: 9px;
   font-weight: 700;
@@ -96,6 +92,7 @@ const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
 
 .menu a {
   display: flex;
+  white-space: nowrap;
   align-items: center;
   color: var(--texto-suave);
   text-decoration: none;
@@ -144,5 +141,50 @@ const esAdmin = computed(() => sesion.usuario?.roles.includes('admin'))
 
 .boton-texto:hover {
   color: var(--acento);
+}
+
+/* En el celular no caben la marca, las cuatro entradas y la cuenta en una fila: sin esto, el menú se
+   cortaba en «Carro» y no se alcanzaban «Órdenes» ni «Cerrar sesión». Pasa a dos filas: arriba la
+   marca y la cuenta, abajo el menú, que se desliza de lado si no cabe. */
+@media (max-width: 720px) {
+  .encabezado {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 0 12px;
+    padding: 10px 16px 0;
+  }
+
+  .cuenta {
+    gap: 10px;
+    font-size: 13px;
+    min-width: 0;
+  }
+
+  .usuario {
+    min-width: 0;
+  }
+
+  /* Un nombre largo se corta con «…» en vez de empujar «Cerrar sesión» fuera de la pantalla. */
+  .nombre {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cuenta .boton {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .menu {
+    order: 1;
+    width: 100%;
+    height: 44px;
+    gap: 20px;
+    margin-top: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
 }
 </style>
