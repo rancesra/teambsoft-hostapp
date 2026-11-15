@@ -15,13 +15,20 @@ Es para probar los tres equipos juntos y para la presentación. Cada equipo sigu
 | `kong` | Compartido | Imagen `kong:3.9`, con [kong.yml](kong.yml) | — |
 | `keycloak` | Compartido | Imagen `keycloak:26.8.0`, con el realm de [keycloak/realm-tienda.json](keycloak/realm-tienda.json) | — (no guarda nada entre reinicios) |
 | `eureka` | Compartido | [teambsoft-backend](https://github.com/rancesra/teambsoft-backend/tree/main/eureka), carpeta `eureka/`, rama `main` | — (el registro vive en memoria) |
+| `hostapp` | B | [teambsoft-hostapp](https://github.com/rancesra/teambsoft-hostapp), rama `main` | — |
+| `catalogo-web` | B | [teambsoft-frontend](https://github.com/rancesra/teambsoft-frontend), rama `main` | — |
+| `busqueda-web` | A | [Grupoa_Busqueda](https://github.com/Tavolistar/Grupoa_Busqueda), carpeta `busqueda-frontend/`, rama `main` | — |
+| `carrito-web` | C | [PROYECTO-ING-SOFTWARE-II](https://github.com/camiloherrera-dev/PROYECTO-ING-SOFTWARE-II), carpeta `Frontend/`, rama `develop` | — |
+| `tunel` | Compartido | Imagen `cloudflare/cloudflared`. Solo con `--profile publico` (sección [Publicar la tienda en internet](#publicar-la-tienda-en-internet)) | — |
 
 Cada servicio tiene **su propia base de datos**: nadie lee la base de otro. Se hablan solo por Kong (REST) o por RabbitMQ (eventos).
 
-**Hacia afuera solo se publican cuatro puertos:**
+**En este computador se publican estos puertos:**
 
 | Puerto | Qué es |
 |---|---|
+| `5050` | **La tienda**: el Host App, con los tres módulos adentro |
+| `5173`, `5174` y `5175` | Los módulos de Catálogo, Búsqueda y Carrito, cada uno solo |
 | `8000` | Kong: `/api/catalogo`, `/api/busqueda` y `/api/carrito` |
 | `8180` | Keycloak: la pantalla de login y su consola (`/admin`), solo desde este computador |
 | `15672` | Consola web de RabbitMQ, solo desde este computador |
@@ -110,18 +117,11 @@ Si ya existen, no se vuelven a crear: lo que se compró en una prueba sigue comp
 
 ## Los frontends
 
-No van en el compose. Cada equipo corre el suyo con `npm run dev`, en su puerto fijo, y llama a Kong en `http://localhost:8000`:
+**Van en el compose** (contrato del Host App v1.4, sección 11.2). Cada uno se construye desde el repositorio de su equipo con un Dockerfile común, que está en el mismo `docker-compose.yml` (`x-dockerfile-frontend`): instala, compila con `vite build` y sirve con `vite preview`. Las llamadas a `/api` las reenvía a Kong por dentro de Docker, así que el navegador nunca sale de su propio origen. Abre la tienda en **http://localhost:5050**.
 
-| Módulo | Puerto |
-|---|---|
-| Catálogo | `5173` |
-| Búsqueda | `5174` |
-| Carrito | `5175` |
-| Host App | `5050` |
+Las direcciones se fijan al compilar. Si cambias una en el `.env`, reconstruye los frontends: `docker compose up -d --build hostapp catalogo-web busqueda-web carrito-web`.
 
-Kong solo acepta llamadas del navegador desde esos cuatro orígenes (CORS, en [kong.yml](kong.yml)). Si un frontend corre en otro puerto, el navegador bloquea sus llamadas.
-
-**Catálogo** se arranca contra Kong: `KONG_URL=http://localhost:8000 npm run dev` (en PowerShell, `$env:KONG_URL="http://localhost:8000"; npm run dev`).
+**Para desarrollar** un módulo se sigue usando `npm run dev`, en su puerto fijo y contra Kong en `http://localhost:8000`; antes, apaga su contenedor (`docker compose stop catalogo-web`) para liberar el puerto. Kong acepta llamadas del navegador desde esos cuatro orígenes (CORS, en [kong.yml](kong.yml)). Catálogo se arranca contra Kong: `KONG_URL=http://localhost:8000 npm run dev` (en PowerShell, `$env:KONG_URL="http://localhost:8000"; npm run dev`).
 
 ## El login (Keycloak)
 
@@ -132,7 +132,7 @@ El Host App tiene el botón **Iniciar sesión**, que lleva a la pantalla de Keyc
 | `admin` | `admin123` | `admin`, `cliente` | La administración del catálogo |
 | `cliente` | `cliente123` | `cliente` | Comprar; la administración le responde `403` |
 
-Son **solo de desarrollo**: el realm se vuelve a importar en cada arranque. La consola de Keycloak está en http://localhost:8180/admin (usuario y clave `admin` / `admin`, o los que pongas en `KEYCLOAK_ADMIN` y `KEYCLOAK_ADMIN_PASSWORD`).
+Son **solo de desarrollo**: el realm se vuelve a importar en cada arranque. Si publicas la tienda, cámbialas en el `.env` (`CLAVE_ADMIN_TIENDA` y `CLAVE_CLIENTE_TIENDA`). La consola de Keycloak está en http://localhost:8180/admin (usuario y clave `admin` / `admin`, o los que pongas en `KEYCLOAK_ADMIN` y `KEYCLOAK_ADMIN_PASSWORD`).
 
 Para pedir un token sin navegador, por ejemplo para probar con curl o Postman, está el cliente `tienda-pruebas`:
 
@@ -148,11 +148,41 @@ El `access_token` de la respuesta va en la cabecera `Authorization: Bearer ...`.
 
 **Carrito:** el token de desarrollo de su frontend (`VITE_DEV_TOKEN`) tiene que estar firmado con el mismo `JWT_SECRET` de este `.env`. Si no, Carrito responde `401`.
 
+## Publicar la tienda en internet
+
+Detalle y decisiones: contrato del Host App v1.4, sección 11. El mismo compose, más un túnel de Cloudflare que sale de este computador: no se abre ningún puerto del router y Cloudflare pone el HTTPS, que el login necesita.
+
+| Dirección | Va a |
+|---|---|
+| `https://tienda.<dominio>` | `http://hostapp:5050` |
+| `https://catalogo.<dominio>` | `http://catalogo-web:5173` |
+| `https://busqueda.<dominio>` | `http://busqueda-web:5174` |
+| `https://carrito.<dominio>` | `http://carrito-web:5175` |
+| `https://login.<dominio>`, solo la ruta `^/(realms\|resources)/` | `http://keycloak:8080` |
+
+**1. Crea el túnel** en el panel de Cloudflare: *Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared*. Ponle un nombre (`tienda`) y, en el entorno, escoge **Docker**. Copia el token: la cadena larga después de `--token`. No corras el comando que muestra: el túnel lo levanta el compose.
+
+**2. Agrega las cinco direcciones** de la tabla, en la pestaña de nombres públicos del túnel (*Public Hostnames*, o *Published application routes* en el panel nuevo): subdominio, tu dominio, tipo **HTTP** y la dirección de la columna «Va a». En `login`, escribe en *Path* `^/(realms|resources)/`, para que la consola de administración de Keycloak no quede publicada.
+
+**3. Llena en el `.env`** la sección «Publicar la tienda en internet» de `.env.example`: las cinco `URL_…` con tu dominio, `TUNEL_TOKEN` y claves nuevas para los usuarios de prueba (`CLAVE_ADMIN_TIENDA` y `CLAVE_CLIENTE_TIENDA`).
+
+**4. Levántala con el perfil `publico`:**
+
+```bash
+docker compose --profile publico up -d --build --wait
+```
+
+**5. Comprueba** que el túnel se conectó (`docker compose logs tunel` dice `Registered tunnel connection`) y abre `https://tienda.<dominio>` desde un celular con datos, fuera de tu red.
+
+**En Windows**, Docker Desktop les da a sus contenedores la mitad de la RAM del computador. La tienda completa usa unos 4 GB; si el computador tiene 8 GB o menos, súbelo en `%UserProfile%\.wslconfig` (`[wsl2]` y `memory=6GB`) y reinicia Docker Desktop. Además, configura Windows para que **no se suspenda**: si el computador duerme, la tienda se cae.
+
+Para quitarla de internet sin apagar la tienda: `docker compose stop tunel`.
+
 ## Comandos útiles
 
 | Para | Comando |
 |---|---|
-| Ver el estado | `docker compose ps` |
+| Ver el estado | `docker compose ps` (con el túnel, `docker compose --profile publico ps`) |
 | Ver los logs de un servicio | `docker compose logs -f catalogo` |
 | Reconstruir uno después de un cambio en su repo | `docker compose up -d --build catalogo` |
 | Apagar todo, conservando los datos | `docker compose down` |

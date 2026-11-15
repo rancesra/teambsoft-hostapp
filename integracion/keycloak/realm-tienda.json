@@ -39,7 +39,9 @@
         "http://localhost:5050/*",
         "http://localhost:5173/*",
         "http://localhost:5174/*",
-        "http://localhost:5175/*"
+        "http://localhost:5175/*",
+        "${URL_TIENDA:http://localhost:5050}/*",
+        "${URL_CATALOGO_WEB:http://localhost:5173}/*"
       ],
       "webOrigins": ["+"],
       "attributes": {
@@ -68,7 +70,7 @@
       "emailVerified": true,
       "firstName": "Ana",
       "lastName": "Administradora",
-      "credentials": [{ "type": "password", "value": "admin123", "temporary": false }],
+      "credentials": [{ "type": "password", "value": "${CLAVE_ADMIN_TIENDA:admin123}", "temporary": false }],
       "realmRoles": ["admin", "cliente"]
     },
     {
@@ -78,7 +80,7 @@
       "emailVerified": true,
       "firstName": "Carlos",
       "lastName": "Cliente",
-      "credentials": [{ "type": "password", "value": "cliente123", "temporary": false }],
+      "credentials": [{ "type": "password", "value": "${CLAVE_CLIENTE_TIENDA:cliente123}", "temporary": false }],
       "realmRoles": ["cliente"]
     }
   ]

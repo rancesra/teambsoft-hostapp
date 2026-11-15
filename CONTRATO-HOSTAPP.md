@@ -1,8 +1,8 @@
 # Contrato del Host App — Cliente Web
 
-**Versión:** 1.3\
-**Fecha:** 2026-11-13\
-**Estado:** el Equipo C aceptó los cambios de la v1.2 el 12 de noviembre. La v1.3 agrega el login y el menú «Órdenes» (sección 10). Plazo para objetar las dos: **martes 17 de noviembre de 2026, 12:00 m.** Si no hay objeciones antes de esa hora, quedan acordadas.\
+**Versión:** 1.4\
+**Fecha:** 2026-11-15\
+**Estado:** el Equipo C aceptó los cambios de la v1.2 el 12 de noviembre. La v1.3 agrega el login y el menú «Órdenes» (sección 10), y la v1.4 el despliegue en internet (sección 11), que no les pide a A ni a C cambiar código. Plazo para objetar las tres: **martes 17 de noviembre de 2026, 12:00 m.** Si no hay objeciones antes de esa hora, quedan acordadas.\
 **Equipo responsable:** Equipo B (Catálogo)\
 **Consumido por:** Equipo A (Búsqueda), Equipo C (Carrito)
 
@@ -71,7 +71,9 @@ Se eligió así porque es la única forma de tener un cascarón de verdad **sin 
    | Carrito | `5175` | `http://localhost:5175` |
    | Host App | `5050` | `http://localhost:5050` |
 
-   Cada módulo llama a su backend a través del Kong compartido, en `http://localhost:8000` (contrato de Catálogo v2.4, sección 10).
+   Cada módulo llama a su backend a través del Kong compartido (contrato de Catálogo, sección 10). Con `npm run dev`, en `http://localhost:8000`. En el `docker-compose` de integración el módulo llama a su propio origen (`/api/...`) y el servidor del módulo lo reenvía a Kong por dentro de Docker (sección 11.2).
+
+   Estas son las direcciones de desarrollo. **Publicada en internet, cada una pasa a ser un subdominio con HTTPS** (sección 11.1), y los puertos siguen siendo los mismos dentro de Docker.
 2. **Conservar su prefijo en sus propias rutas.** El Host App le pasa la ruta tal cual: `/carrito/checkout` en el cascarón abre `/carrito/checkout` dentro del módulo de Carro.
 3. **No pintar su propio encabezado cuando está dentro del Host App.** Si no, se ven dos. Un módulo sabe que está dentro de un iframe así:
 
@@ -176,6 +178,8 @@ Sin sesión, o al cerrarla, llegan `token: null` y `usuario: null`.
 3. **El módulo solo acepta `sesion` si viene del origen del Host App** (`http://localhost:5050`). Cualquier página puede mandarle mensajes a un iframe, y aceptar una sesión de cualquiera sería dejar que otro se haga pasar por el usuario.
 4. **El módulo no confía en `usuario` para nada importante.** Le sirve para mostrar el nombre y ocultar botones. Lo que decide es el backend, que valida el token con la llave de Keycloak.
 
+Las direcciones de las reglas son las de desarrollo. Cada lado lee la del otro de su configuración (`VITE_MODULO_*` en el Host App, `VITE_HOST_APP` en el módulo), así que publicada cambia sin tocar el código (sección 11).
+
 Ejemplo dentro de un módulo:
 
 ```js
@@ -239,7 +243,6 @@ Node.js en versión LTS.
 - **Registro de usuarios.** Los usuarios del realm `tienda` vienen precargados; no hay pantalla para crear cuentas.
 - **Cerrar sesión desde un módulo embebido.** El botón está en el encabezado del Host App; un módulo dentro del iframe no lo necesita.
 - **Estado global compartido entre módulos** más allá de `sesion`.
-- **Despliegue del Host App** en un servidor: por ahora corre local.
 - **Comunicación directa entre módulos.** Si Catálogo necesita avisarle algo al Carrito, se hace por navegación (el mensaje `navegar` de la sección 4, que va al Host App y no al otro módulo) o por el backend. Un módulo nunca le envía mensajes a otro.
 
 ## 9. Decisiones de la v1.2
@@ -295,7 +298,51 @@ El diagrama de la arquitectura pone Login, Catálogo y Órdenes en el Cliente We
 | B — Host App | El botón de login, el mensaje `sesion` y la entrada «Órdenes» | Sí |
 | B — Catálogo | Recibir la sesión y enviar el token a su backend, que desde la v2.5 de su contrato lo exige para administrar | Sí |
 
-## 11. Historial de cambios
+## 11. Decisiones de la v1.4: el despliegue
+
+La tienda se publica en internet desde un computador del Equipo B, con el mismo `docker-compose` de integración y un túnel de Cloudflare. Sin el túnel, el mismo compose levanta la tienda completa en `localhost`: es el respaldo para la presentación.
+
+### 11.1 Las direcciones publicadas
+
+| Dirección | Qué es | Puerto dentro de Docker |
+|---|---|---|
+| `https://tienda.<dominio>` | El Host App: la que se abre en el navegador | `5050` |
+| `https://catalogo.<dominio>` | Módulo de Catálogo | `5173` |
+| `https://busqueda.<dominio>` | Módulo de Búsqueda | `5174` |
+| `https://carrito.<dominio>` | Módulo de Carrito | `5175` |
+| `https://login.<dominio>` | Keycloak, solo las rutas del login (`/realms` y `/resources`). Su consola de administración no se publica | `8080` |
+
+Kong, los backends, las bases de datos y las consolas de RabbitMQ y Eureka **no se publican**: solo se llega a ellos por dentro de Docker. Las rutas de la API siguen siendo las de siempre (`/api/catalogo`, `/api/busqueda` y `/api/carrito`), pero cada módulo las llama en su propio subdominio (11.2).
+
+### 11.2 Cómo corre cada frontend
+
+- **Se construye desde el repositorio de su equipo**, con un Dockerfile común que vive en el `docker-compose` de integración. Nadie agrega archivos a su repositorio.
+- **`vite build` con las direcciones como variables `VITE_`**, que salen del `.env` del compose: `localhost` en un computador y los subdominios cuando se publica. Lo sirve `vite preview`.
+- **`/api` se reenvía a Kong por dentro de Docker.** El navegador nunca sale del origen del módulo, así que no hace falta CORS.
+
+| Frontend | Variables con las que se construye |
+|---|---|
+| Host App | `VITE_MODULO_CATALOGO`, `VITE_MODULO_BUSQUEDA`, `VITE_MODULO_CARRO` y `VITE_KEYCLOAK_URL` |
+| Catálogo | `VITE_KEYCLOAK_URL` y `VITE_HOST_APP` |
+| Búsqueda | `VITE_API_URL=/api/busqueda` |
+| Carrito | `VITE_HOST_APP` |
+
+### 11.3 Por qué HTTPS y por qué un túnel
+
+- **Sin HTTPS no hay login.** El reto PKCE (sección 10.1) se calcula con `crypto.subtle`, y el navegador solo lo permite en `https://` o en `localhost`. Además, Keycloak rechaza el login sin HTTPS cuando la conexión viene de internet.
+- **El túnel sale del computador hacia Cloudflare**, que publica los subdominios con HTTPS y trae cada visita de vuelta por el mismo túnel. No hay que abrir puertos en el router, funciona aunque el proveedor de internet comparta la IP pública (CGNAT) y la IP de la casa no queda expuesta.
+- **Se descartó abrir los puertos del router:** no funciona con CGNAT y deja el computador expuesto a internet. El costo del túnel: la tienda publicada depende de Cloudflare, y del computador encendido.
+
+### 11.4 Lo que le toca a cada equipo
+
+| Equipo | Qué ajusta |
+|---|---|
+| A — Búsqueda | Nada en el código: ya lee su API de `VITE_API_URL`. Su rama `main` tiene que tener los parches de integración, porque el compose se construye desde ahí |
+| C — Carrito | Nada en el código: ya lee el origen del Host App de `VITE_HOST_APP` y el emisor del token de `KEYCLOAK_EMISOR`. Su rama `develop` tiene que tener los parches de integración |
+| B — Host App | El compose con los frontends y el túnel, las direcciones del login en el realm de Keycloak y el computador donde corre |
+| Todos | Que su `vite.config.js` siga exportando un objeto (`defineConfig({ ... })`), no una función: el compose le suma su configuración de `preview` |
+
+## 12. Historial de cambios
 
 | Fecha | Cambio |
 |---|---|
@@ -304,3 +351,4 @@ El diagrama de la arquitectura pone Login, Catálogo y Órdenes en el Cliente We
 | 2026-11-05 | v1.2 — **Puertos fijos** de los tres módulos y del Host App (requisito 1), y los módulos llaman a su backend por el Kong compartido. **Nuevo mensaje `navegar`** (sección 4) para que un módulo le pida al Host App ir a otro módulo. **Se decide el botón “Agregar al carro”** (sección 9.1): Catálogo navega a `/carrito?agregar={id}` y Carrito agrega al cargar. **`/` sigue redirigiendo a `/catalogo`.** La sección 9 pasa de “Lo que falta acordar” a “Decisiones de la v1.2”. Plazo para objetar: 8 de noviembre de 2026 |
 | 2026-11-12 | v1.2, revisión — Sin cambios en lo propuesto. El plazo para objetar pasa al martes 17 de noviembre a las 12:00 m., el mismo del contrato de Catálogo v2.4 y del contrato de integración del Equipo C, porque el del 8 de noviembre venció antes de que los equipos recibieran el documento. Se registra que el Equipo C acepta la v1.2: puerto `5175`, `?agregar={id}` y modo embebido sin encabezado |
 | 2026-11-13 | v1.3 — **Login con Keycloak** (sección 10.1): el Host App inicia y cierra la sesión, y se la pasa a cada módulo con el mensaje `sesion`; los módulos la piden con `pedir-sesion` y piden el login con `iniciar-sesion` (sección 5.1, con las reglas de origen). La sección 5 se divide en etapa 1 (mensajes) y etapa 2 (`provide`/`inject`); `sesion` pasa de `{ token, userId }` a `{ token, usuario }`. **«Órdenes» en el menú** (sección 10.2) abre `/carrito/pedidos`. **Sección 2:** la ruta `/sesion` es del Host App. **Sección 8:** sale la autenticación real; quedan fuera el registro de usuarios y cerrar sesión desde un módulo. La sección 10 pasa a ser «Decisiones de la v1.3» y el historial, la 11 |
+| 2026-11-15 | v1.4 — **Despliegue en internet** (sección 11): los cuatro frontends entran al `docker-compose` de integración, construidos desde el repositorio de cada equipo y servidos con `vite preview`, y un túnel de Cloudflare publica cada uno en su subdominio con HTTPS. **Requisito 1:** las direcciones de la tabla son las de desarrollo; dentro del compose cada módulo llama a su propio origen y su servidor reenvía `/api` a Kong. **Sección 5.1:** las direcciones de las reglas salen de la configuración de cada lado. **Sección 8:** sale el despliegue. A y C no cambian código. El historial pasa a la sección 12 |
